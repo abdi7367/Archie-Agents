@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+
+  # ── Backend (FastAPI + LangGraph) ──────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: archie-backend
+    ports:
+      - "8001:8001"
+    env_file:
+      - backend/.env          # GROQ_API_KEY (or INFERENCE_MODE + VLLM_BASE_URL)
+    environment:
+      - PYTHONUNBUFFERED=1
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+
+  # ── Frontend (React → Nginx) ───────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: archie-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    name: archie-network

@@ -1,18 +1,24 @@
 """Archie FastAPI server.
 
 Endpoints:
-  POST /run          — start a new pipeline run, returns thread_id + result
-  GET  /run/{id}     — get the state of a previous run (via checkpointer)
+  POST /run          — start a pipeline run in the background, returns thread_id immediately
+  GET  /run/{id}     — poll the state of a run (pending | running | complete | error)
   GET  /health       — liveness check
+
+FIX: The original api.py called ainvoke() synchronously inside the POST handler.
+     For 3 LLM calls this takes 30-90 seconds — enough to timeout in most proxies.
+     Now POST returns immediately with thread_id; the graph runs in a background task.
+     The frontend polls GET /run/{id} until status is "complete" or "error".
 
 Run locally:
   uvicorn backend.api:app --reload --port 8000
 """
 
+import asyncio
 import uuid
 from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -25,106 +31,163 @@ from backend.state import Constraints
 app = FastAPI(
     title="Archie API",
     description="Multi-agent architecture intelligence pipeline",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten this before deploying publicly
-    allow_methods=["*"],
+    # FIX: lock this down to your actual frontend origin before deploying
+    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+
+# ── In-memory run status registry ────────────────────────────────────────────
+# Tracks whether a thread is still running so the GET endpoint can return
+# a "running" status before the graph checkpoints its final state.
+# NOTE: this is per-process. If you run multiple workers, use Redis instead.
+
+_run_status: dict[str, str] = {}   # thread_id → "pending" | "running" | "complete" | "error"
 
 
 # ── Request / response schemas ───────────────────────────────────────────────
 
 class RunRequest(BaseModel):
     user_input: str
-    thread_id: Optional[str] = None   # pass an existing id to resume a run
+    thread_id: Optional[str] = None
 
 
 class RunResponse(BaseModel):
     thread_id: str
-    current_agent: str
+    status: str                          # "pending" | "running" | "complete" | "error"
+    current_agent: Optional[str] = None
     constraints: Optional[dict] = None
-    architectures: Optional[list] = None      
+    architectures: Optional[list] = None
     tech_decisions: Optional[list] = None
     error: Optional[str] = None
-    status: str   # "complete" | "error"
 
 
-# ── Endpoints ────────────────────────────────────────────────────────────────
+# ── Background pipeline runner ───────────────────────────────────────────────
 
-@app.post("/run", response_model=RunResponse)
-async def run_pipeline(request: RunRequest) -> RunResponse:
-    """
-    Start (or resume) an Archie pipeline run.
-
-    - A new thread_id is generated if one isn't supplied.
-    - The graph runs synchronously through all completed agents and returns.
-    - State is checkpointed after every node, so the thread_id can be used
-      to inspect or resume the run later.
-    """
-    thread_id = request.thread_id or str(uuid.uuid4())
+async def _run_pipeline(thread_id: str, user_input: str) -> None:
+    """Runs the full agent graph in the background."""
     config = {"configurable": {"thread_id": thread_id}}
-
     initial_state = {
-        "user_input": request.user_input,
+        "user_input": user_input,
         "constraints": None,
         "current_agent": "requirements",
         "error": None,
     }
 
+    _run_status[thread_id] = "running"
     try:
-        final_state: dict[str, Any] = await archie_graph.ainvoke(
-            initial_state, config=config
-        )
+        await archie_graph.ainvoke(initial_state, config=config)
+        _run_status[thread_id] = "complete"
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _run_status[thread_id] = "error"
+        # The graph's error_handler node should catch most failures,
+        # but this outer try/except protects against infrastructure errors.
+        print(f"[Archie] Pipeline error for {thread_id}: {exc}")
 
-    constraints = final_state.get("constraints")
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _serialize_state(thread_id: str, state: dict[str, Any]) -> RunResponse:
+    """Convert raw graph state dict into a RunResponse."""
+    constraints = state.get("constraints")
+    agent_error = state.get("error")
+    agent_status = _run_status.get(thread_id, "complete")
+
+    # If the graph itself flagged an error, override the status
+    if agent_error:
+        agent_status = "error"
 
     return RunResponse(
         thread_id=thread_id,
-        current_agent=final_state.get("current_agent", "unknown"),
-        constraints=constraints.model_dump() if isinstance(constraints, Constraints) else constraints,
-        architectures=final_state.get("architectures"),      
-        tech_decisions=final_state.get("tech_decisions"),
-        error=final_state.get("error"),
-        status="error" if final_state.get("error") else "complete",
+        status=agent_status,
+        current_agent=state.get("current_agent"),
+        constraints=(
+            constraints.model_dump()
+            if isinstance(constraints, Constraints)
+            else constraints
+        ),
+        architectures=state.get("architectures"),
+        tech_decisions=state.get("tech_decisions"),
+        error=agent_error,
+    )
+
+
+# ── Endpoints ─────────────────────────────────────────────────────────────────
+
+@app.post("/run", response_model=RunResponse)
+async def start_run(request: RunRequest, background_tasks: BackgroundTasks) -> RunResponse:
+    """
+    Start a new pipeline run.
+
+    Returns immediately with thread_id + status="pending".
+    The pipeline runs in the background — poll GET /run/{thread_id} for results.
+    """
+    thread_id = request.thread_id or str(uuid.uuid4())
+
+    # Avoid re-running a thread that's already in flight or complete
+    existing_status = _run_status.get(thread_id)
+    if existing_status in ("running", "complete"):
+        # Just return current state without kicking off another run
+        return await get_run(thread_id)
+
+    _run_status[thread_id] = "pending"
+    background_tasks.add_task(_run_pipeline, thread_id, request.user_input)
+
+    return RunResponse(
+        thread_id=thread_id,
+        status="pending",
+        current_agent="requirements",
     )
 
 
 @app.get("/run/{thread_id}", response_model=RunResponse)
 async def get_run(thread_id: str) -> RunResponse:
     """
-    Retrieve the checkpointed state of a previous run by thread_id.
-    Useful for polling or debugging without re-running the pipeline.
+    Poll a pipeline run.
+
+    Returns the latest checkpointed state. The frontend should call this
+    every 2-3 seconds until status is "complete" or "error".
     """
+    # If we have no record of this thread at all, 404 early
+    if thread_id not in _run_status:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No run found for thread_id: {thread_id}. Start one with POST /run."
+        )
+
+    current_status = _run_status[thread_id]
+
+    # If still pending (background task hasn't started yet), return early
+    if current_status == "pending":
+        return RunResponse(
+            thread_id=thread_id,
+            status="pending",
+            current_agent="requirements",
+        )
+
     config = {"configurable": {"thread_id": thread_id}}
-
     try:
-        state_snapshot = await archie_graph.aget_state(config)
+        snapshot = await archie_graph.aget_state(config)
     except Exception as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc))
 
-    if not state_snapshot or not state_snapshot.values:
-        raise HTTPException(status_code=404, detail=f"No run found for thread_id: {thread_id}")
+    if not snapshot or not snapshot.values:
+        # Graph started but no checkpoint yet — still spinning up
+        return RunResponse(
+            thread_id=thread_id,
+            status="running",
+            current_agent="requirements",
+        )
 
-    state = state_snapshot.values
-    constraints = state.get("constraints")
-
-    return RunResponse(
-        thread_id=thread_id,
-        current_agent=state.get("current_agent", "unknown"),
-        constraints=constraints.model_dump() if isinstance(constraints, Constraints) else constraints,
-        architectures=state.get("architectures"),
-        tech_decisions=state.get("tech_decisions"),
-        error=state.get("error"),
-        status="error" if state.get("error") else "complete",
-    )
+    return _serialize_state(thread_id, snapshot.values)
 
 
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok"}
+    return {"status": "ok", "runs_tracked": len(_run_status)}

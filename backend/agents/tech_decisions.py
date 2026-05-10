@@ -11,7 +11,7 @@ from typing import Optional
 
 from pydantic import ValidationError
 
-from backend.llm import get_client, get_model_name
+from backend.llm import create_chat_completion, get_client, get_model_name
 from backend.prompts.tech_decisions import build_tech_decisions_prompt
 from backend.state import ArchieState, TechDecisionsOutput, TierDecisions
 
@@ -52,7 +52,8 @@ def tech_decisions_agent(state: ArchieState) -> dict:
                 ),
             })
 
-        response = client.chat.completions.create(
+        response = create_chat_completion(
+            client,
             model=get_model_name(),
             messages=messages,
             temperature=0.3,

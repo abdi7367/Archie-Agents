@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+
+  # ── vLLM inference server on AMD ROCm ──────────────────────────────
+  vllm:
+    image: rocm/vllm:latest          # official ROCm vLLM image
+    container_name: archie-vllm
+    
+    # AMD GPU passthrough — this is the ROCm magic
+    devices:
+      - /dev/kfd                     # kernel fusion driver
+      - /dev/dri                     # direct rendering interface
+    
+    group_add:
+      - video
+      - render
+    
+    ipc: host                        # required for multi-GPU shared memory
+    cap_add:
+      - SYS_PTRACE                   # ROCm debugger access
+    
+    security_opt:
+      - seccomp:unconfined
+    
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION=11.0.0     # MI300X GFX version
+      - ROCR_VISIBLE_DEVICES=0              # use first GPU
+      - HIP_VISIBLE_DEVICES=0
+    
+    volumes:
+      # Cache downloaded model weights — CRITICAL
+      # Without this, every container restart re-downloads 140GB
+      - huggingface_cache:/root/.cache/huggingface
+    
+    ports:
+      - "8001:8000"                  # expose vLLM on 8001 externally
+    
+    command: >
+      python -m vllm.entrypoints.openai.api_server
+      --model meta-llama/Llama-3.3-70B-Instruct
+      --tensor-parallel-size 1
+      --dtype float16
+      --max-model-len 8192
+      --gpu-memory-utilization 0.85
+      --host 0.0.0.0
+      --port 8000
+      --served-model-name meta-llama/Llama-3.3-70B-Instruct
+    
+    # Model loading takes 3-5 minutes — backend must wait
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 20          # 10 minutes total wait time
+      start_period: 180s   # 3 min grace period for model load
+
+  # ── Archie FastAPI backend ──────────────────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: archie-backend
+    
+    depends_on:
+      vllm:
+        condition: service_healthy   # won't start until vLLM is ready
+    
+    environment:
+      - INFERENCE_MODE=local
+      - VLLM_BASE_URL=http://vllm:8000/v1
+      - LOCAL_MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
+    
+    ports:
+      - "8000:8000"
+
+  # ── React frontend ──────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.frontend
+      args:
+        - VITE_API_URL=http://<AMD_INSTANCE_PUBLIC_IP>:8000
+    container_name: archie-frontend
+    
+    depends_on:
+      - backend
+    
+    ports:
+      - "3000:3000"
+
+volumes:
+  huggingface_cache:    # persists model weights across restarts
+    driver: local

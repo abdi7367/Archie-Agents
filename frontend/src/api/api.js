@@ -1,42 +1,88 @@
-export const runArchie = async (userInput) => {
-  try {
-    const response = await fetch('/api/run', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ user_input: userInput }),
-    })
+const BASE = '/api'
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+// ── Core fetch helpers ───────────────────────────────────────────────────────
 
-    const data = await response.json()
-    return data
-  } catch (error) {
-    console.error('Error calling Archie API:', error)
-    throw error
+async function post(path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`POST ${path} failed (${res.status}): ${detail}`)
   }
+  return res.json()
 }
 
-export const getRun = async (threadId) => {
-  try {
-    const response = await fetch(`/api/run/${threadId}`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
+async function get(path) {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+  })
+  if (!res.ok) {
+    const detail = await res.text()
+    throw new Error(`GET ${path} failed (${res.status}): ${detail}`)
+  }
+  return res.json()
+}
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+// ── Public API ───────────────────────────────────────────────────────────────
+
+/**
+ * Start a pipeline run.
+ * Returns immediately with { thread_id, status: "pending" }.
+ * Use pollRun() to wait for completion.
+ */
+export const runArchie = (userInput) =>
+  post('/run', { user_input: userInput })
+
+/**
+ * Fetch the current state of a run by thread_id.
+ */
+export const getRun = (threadId) =>
+  get(`/run/${threadId}`)
+
+/**
+ * Poll GET /run/{threadId} every `intervalMs` milliseconds until the run
+ * reaches "complete" or "error", then resolve with the final state.
+ *
+ * @param {string}   threadId
+ * @param {function} onUpdate   - called on every poll with the latest data
+ * @param {number}   intervalMs - polling interval (default 2500ms)
+ * @param {number}   timeoutMs  - give up after this many ms (default 120s)
+ */
+export const pollRun = (threadId, onUpdate, intervalMs = 2500, timeoutMs = 120_000) => {
+  return new Promise((resolve, reject) => {
+    const start = Date.now()
+    let timerId = null
+
+    const tick = async () => {
+      // Timeout guard
+      if (Date.now() - start > timeoutMs) {
+        clearTimeout(timerId)
+        reject(new Error('Pipeline timed out after 2 minutes. Please try again.'))
+        return
+      }
+
+      try {
+        const data = await getRun(threadId)
+        if (onUpdate) onUpdate(data)
+
+        if (data.status === 'complete' || data.status === 'error') {
+          clearTimeout(timerId)
+          resolve(data)
+        } else {
+          // Still running — schedule next tick
+          timerId = setTimeout(tick, intervalMs)
+        }
+      } catch (err) {
+        clearTimeout(timerId)
+        reject(err)
+      }
     }
 
-    const data = await response.json()
-    return data
-  } catch (error) {
-    console.error('Error fetching run data:', error)
-    throw error
-  }
+    // Start polling
+    timerId = setTimeout(tick, intervalMs)
+  })
 }

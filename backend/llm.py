@@ -12,6 +12,7 @@ The agents never import Groq or OpenAI directly — only this module.
 import os
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 
 def _load_env_var(key: str) -> str | None:
@@ -43,6 +44,28 @@ def get_model_name() -> str:
     return "llama-3.3-70b-versatile"   # Groq model ID
 
 
+def get_request_timeout_seconds() -> float:
+    raw = _load_env_var("LLM_REQUEST_TIMEOUT_SECONDS")
+    if not raw:
+        return 30.0
+    try:
+        return float(raw)
+    except ValueError:
+        return 30.0
+
+
+def create_chat_completion(client: Any, **kwargs):
+    """
+    Create a chat completion with a default timeout.
+    Falls back for SDKs that don't accept timeout as a per-call arg.
+    """
+    timeout = get_request_timeout_seconds()
+    try:
+        return client.chat.completions.create(timeout=timeout, **kwargs)
+    except TypeError:
+        return client.chat.completions.create(**kwargs)
+
+
 @lru_cache(maxsize=1)
 def get_client():
     """
@@ -50,6 +73,7 @@ def get_client():
     Both Groq and vLLM expose the same /v1/chat/completions contract.
     """
     mode = get_inference_mode()
+    timeout = get_request_timeout_seconds()
 
     if mode == "local":
         # vLLM exposes OpenAI-compatible API
@@ -58,6 +82,7 @@ def get_client():
         return OpenAI(
             base_url=base_url,
             api_key="not-needed",   # vLLM doesn't require auth by default
+            timeout=timeout,
         )
 
     # Default: Groq
@@ -67,4 +92,4 @@ def get_client():
             "Missing GROQ_API_KEY. Set it in your environment or backend/.env"
         )
     from groq import Client
-    return Client(api_key=api_key)
+    return Client(api_key=api_key, timeout=timeout)

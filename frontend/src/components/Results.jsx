@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import AgentPipeline from './AgentPipeline'
 import ConstraintsPanel from './ConstraintsPanel'
 import ArchDiagram from './ArchDiagram'
@@ -15,31 +16,46 @@ const TABS = [
 ]
 
 const Results = () => {
+  const location = useLocation()
+
   const [activeTab, setActiveTab] = useState('overview')
-  const [userInput, setUserInput] = useState('')
-  const [timestamp, setTimestamp] = useState('')
+
+  // ── FIX 1: All state at the top level — no useState inside render functions ──
+  const [selectedTier, setSelectedTier] = useState('MVP')
+
+  // ── FIX 2: Prefer router state over sessionStorage ──
+  const routerState = location.state || {}
+  const [userInput] = useState(
+    routerState.userInput || sessionStorage.getItem('userInput') || ''
+  )
+  const [timestamp] = useState(
+    routerState.timestamp || sessionStorage.getItem('timestamp') || ''
+  )
+
   const [runData, setRunData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [isInitialRun, setIsInitialRun] = useState(false)
 
+  // ── FIX 3: Sync selectedTier when runData arrives ──
   useEffect(() => {
-    const savedInput = sessionStorage.getItem('userInput')
-    const savedTimestamp = sessionStorage.getItem('timestamp')
-    const threadId = sessionStorage.getItem('thread_id')
+    if (runData?.architectures?.length) {
+      setSelectedTier(runData.architectures[0].tier)
+    }
+  }, [runData])
 
-    if (savedInput) setUserInput(savedInput)
-    if (savedTimestamp) setTimestamp(savedTimestamp)
+  useEffect(() => {
+    const threadId = routerState.threadId || sessionStorage.getItem('thread_id')
 
     if (threadId) {
       fetchRunData(threadId)
-    } else if (savedInput) {
-      runArchieAnalysis(savedInput)
+    } else if (userInput) {
+      runArchieAnalysis(userInput)
     } else {
       setLoading(false)
       setError('No run data found. Please submit a request first.')
     }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchRunData = async (threadId) => {
     try {
@@ -72,6 +88,8 @@ const Results = () => {
     }
   }
 
+  // ── Render helpers ───────────────────────────────────────────────────────
+
   const renderTabContent = () => {
     if (loading) {
       return (
@@ -82,7 +100,7 @@ const Results = () => {
             <>
               <div className="loading-spinner"></div>
               <div className="loading-text">
-                Loading {TABS.find(tab => tab.id === activeTab)?.label}...
+                Loading {TABS.find(t => t.id === activeTab)?.label}...
               </div>
               <div className="loading-subtext">AI agents are processing your request</div>
             </>
@@ -129,7 +147,7 @@ const Results = () => {
         return (
           <div className="placeholder-container">
             <div className="placeholder-text">
-              {TABS.find(tab => tab.id === activeTab)?.label} content coming soon
+              {TABS.find(t => t.id === activeTab)?.label} content coming soon
             </div>
           </div>
         )
@@ -150,7 +168,6 @@ const Results = () => {
 
     return (
       <div className="overview-container">
-        {/* Recommendation Section */}
         {recommendation && (
           <div className="recommendation-card">
             <div className="recommendation-header">
@@ -161,52 +178,51 @@ const Results = () => {
           </div>
         )}
 
-        {/* Comparison Table */}
         <div className="comparison-section">
           <h3 className="section-title">Architecture Comparison</h3>
           <div className="comparison-table">
             <div className="comparison-header">
               <div className="comparison-cell">Feature</div>
-              {architectures.map((arch, index) => (
-                <div key={index} className={`comparison-cell tier-${arch.tier?.toLowerCase()}`}>
+              {architectures.map((arch, i) => (
+                <div key={i} className={`comparison-cell tier-${arch.tier?.toLowerCase()}`}>
                   {arch.tier}
                 </div>
               ))}
             </div>
-            
+
             <div className="comparison-row">
               <div className="comparison-cell label">Monthly Cost</div>
-              {architectures.map((arch, index) => (
-                <div key={index} className="comparison-cell">
+              {architectures.map((arch, i) => (
+                <div key={i} className="comparison-cell">
                   <span className="cost-value">{arch.estimated_monthly_cost}</span>
                 </div>
               ))}
             </div>
-            
+
             <div className="comparison-row">
               <div className="comparison-cell label">Components</div>
-              {architectures.map((arch, index) => (
-                <div key={index} className="comparison-cell">
+              {architectures.map((arch, i) => (
+                <div key={i} className="comparison-cell">
                   {arch.components?.length || 0}
                 </div>
               ))}
             </div>
-            
+
             <div className="comparison-row">
               <div className="comparison-cell label">Complexity</div>
-              {architectures.map((arch, index) => (
-                <div key={index} className="comparison-cell">
+              {architectures.map((arch, i) => (
+                <div key={i} className="comparison-cell">
                   <span className={`complexity-badge ${arch.complexity?.toLowerCase()}`}>
                     {arch.complexity || 'Medium'}
                   </span>
                 </div>
               ))}
             </div>
-            
+
             <div className="comparison-row">
               <div className="comparison-cell label">Best For</div>
-              {architectures.map((arch, index) => (
-                <div key={index} className="comparison-cell">
+              {architectures.map((arch, i) => (
+                <div key={i} className="comparison-cell">
                   <span className="best-for">{arch.best_for || 'General'}</span>
                 </div>
               ))}
@@ -214,18 +230,19 @@ const Results = () => {
           </div>
         </div>
 
-        {/* Quick Summary Cards */}
         <div className="summary-cards">
-          {architectures.map((arch, index) => (
-            <div key={index} className={`summary-card tier-${arch.tier?.toLowerCase()}`}>
+          {architectures.map((arch, i) => (
+            <div key={i} className={`summary-card tier-${arch.tier?.toLowerCase()}`}>
               <h4 className="summary-tier">{arch.tier}</h4>
               <p className="summary-text">{arch.summary}</p>
               <div className="summary-components">
-                {(arch.components || []).slice(0, 4).map((comp, i) => (
-                  <span key={i} className="component-chip">{comp}</span>
+                {(arch.components || []).slice(0, 4).map((comp, j) => (
+                  <span key={j} className="component-chip">{comp}</span>
                 ))}
                 {(arch.components || []).length > 4 && (
-                  <span className="component-chip more">+{arch.components.length - 4} more</span>
+                  <span className="component-chip more">
+                    +{arch.components.length - 4} more
+                  </span>
                 )}
               </div>
             </div>
@@ -235,10 +252,9 @@ const Results = () => {
     )
   }
 
+  // ── FIX 1 APPLIED: selectedTier lives at component level, not inside this fn ──
   const renderArchitecturesTab = () => {
     const architectures = runData.architectures || []
-    const [selectedTier, setSelectedTier] = useState(architectures[0]?.tier || 'MVP')
-    
     const selectedArch = architectures.find(a => a.tier === selectedTier) || architectures[0]
 
     if (architectures.length === 0) {
@@ -251,11 +267,10 @@ const Results = () => {
 
     return (
       <div className="architectures-container">
-        {/* Tier Selector */}
         <div className="tier-selector">
-          {architectures.map((arch, index) => (
+          {architectures.map((arch, i) => (
             <button
-              key={index}
+              key={i}
               className={`tier-button ${selectedTier === arch.tier ? 'active' : ''} tier-${arch.tier?.toLowerCase()}`}
               onClick={() => setSelectedTier(arch.tier)}
             >
@@ -309,13 +324,13 @@ const Results = () => {
                     <div className="pros">
                       <span className="tradeoff-label">Pros</span>
                       {(selectedArch.tradeoffs.pros || []).map((pro, i) => (
-                        <p key={`pro-${i}`} className="pro-item">✓ {pro}</p>
+                        <p key={i} className="pro-item">✓ {pro}</p>
                       ))}
                     </div>
                     <div className="cons">
                       <span className="tradeoff-label">Cons</span>
                       {(selectedArch.tradeoffs.cons || []).map((con, i) => (
-                        <p key={`con-${i}`} className="con-item">✗ {con}</p>
+                        <p key={i} className="con-item">✗ {con}</p>
                       ))}
                     </div>
                   </div>
@@ -351,8 +366,8 @@ const Results = () => {
 
     return (
       <div className="decisions-container">
-        {techDecisions.map((tier, index) => (
-          <div key={index} className={`decision-tier-card tier-${tier.tier?.toLowerCase()}`}>
+        {techDecisions.map((tier, i) => (
+          <div key={i} className={`decision-tier-card tier-${tier.tier?.toLowerCase()}`}>
             <div className="decision-tier-header">
               <h3 className="decision-tier-title">{tier.tier}</h3>
               {tier.overall_recommendation && (
@@ -364,16 +379,16 @@ const Results = () => {
               <div className="risk-section">
                 <h4 className="section-label">Risk Flags</h4>
                 <div className="risk-flags">
-                  {tier.risk_flags.map((flag, i) => (
-                    <span key={i} className="risk-flag">⚠ {flag}</span>
+                  {tier.risk_flags.map((flag, j) => (
+                    <span key={j} className="risk-flag">⚠ {flag}</span>
                   ))}
                 </div>
               </div>
             )}
 
             <div className="decisions-grid">
-              {(tier.decisions || []).map((decision, i) => (
-                <div key={i} className="decision-card">
+              {(tier.decisions || []).map((decision, j) => (
+                <div key={j} className="decision-card">
                   <div className="decision-category">
                     <span className="category-name">{decision.category}</span>
                     <span className="score-badge">{decision.score}/10</span>
@@ -418,10 +433,9 @@ const Results = () => {
 
     return (
       <div className="costs-container">
-        {/* Cost Summary Cards */}
         <div className="cost-summary-grid">
-          {architectures.map((arch, index) => (
-            <div key={index} className={`cost-card tier-${arch.tier?.toLowerCase()}`}>
+          {architectures.map((arch, i) => (
+            <div key={i} className={`cost-card tier-${arch.tier?.toLowerCase()}`}>
               <h3 className="cost-tier">{arch.tier}</h3>
               <div className="cost-amount">{arch.estimated_monthly_cost}</div>
               <div className="cost-period">per month</div>
@@ -439,7 +453,6 @@ const Results = () => {
           ))}
         </div>
 
-        {/* Detailed Cost Table */}
         {costAnalysis.breakdown && (
           <div className="cost-detail-section">
             <h3 className="section-title">Cost Breakdown</h3>
@@ -454,8 +467,8 @@ const Results = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {costAnalysis.breakdown.map((item, index) => (
-                    <tr key={index}>
+                  {costAnalysis.breakdown.map((item, i) => (
+                    <tr key={i}>
                       <td>{item.component}</td>
                       <td>{item.service}</td>
                       <td>{item.instance_type || 'N/A'}</td>
@@ -468,7 +481,6 @@ const Results = () => {
           </div>
         )}
 
-        {/* Scaling Costs */}
         {costAnalysis.scaling_projection && (
           <div className="cost-detail-section">
             <h3 className="section-title">Scaling Projections</h3>
@@ -489,13 +501,12 @@ const Results = () => {
           </div>
         )}
 
-        {/* Cost Notes */}
         {costAnalysis.notes && (
           <div className="cost-notes">
             <h4 className="notes-title">Cost Optimization Notes</h4>
             <ul>
-              {costAnalysis.notes.map((note, index) => (
-                <li key={index}>{note}</li>
+              {costAnalysis.notes.map((note, i) => (
+                <li key={i}>{note}</li>
               ))}
             </ul>
           </div>
@@ -517,11 +528,11 @@ const Results = () => {
 
     return (
       <div className="adrs-container">
-        {adrs.map((adr, index) => (
+        {adrs.map((adr, i) => (
           <AdrCard
-            key={index}
-            title={adr.title || `Architecture Decision ${index + 1}`}
-            number={adr.number || index + 1}
+            key={i}
+            title={adr.title || `Architecture Decision ${i + 1}`}
+            number={adr.number || i + 1}
             status={adr.status || 'accepted'}
             content={adr.content || adr.description || adr.decision}
             onDownload={(number, title) => console.log(`Downloaded ADR-${number}: ${title}`)}
@@ -531,16 +542,20 @@ const Results = () => {
     )
   }
 
+  // ── Render ───────────────────────────────────────────────────────────────
+
   return (
     <div className="results-container">
       <div className="results-header">
         <h1 className="results-title">Analysis Results</h1>
         <div className="results-meta">
           <div className="meta-item">
-            <span className="meta-label">Query:</span> {userInput.substring(0, 50)}{userInput.length > 50 ? '...' : ''}
+            <span className="meta-label">Query:</span>{' '}
+            {userInput.substring(0, 50)}{userInput.length > 50 ? '…' : ''}
           </div>
           <div className="meta-item">
-            <span className="meta-label">Time:</span> {timestamp ? new Date(timestamp).toLocaleString() : '--'}
+            <span className="meta-label">Time:</span>{' '}
+            {timestamp ? new Date(timestamp).toLocaleString() : '--'}
           </div>
         </div>
       </div>
