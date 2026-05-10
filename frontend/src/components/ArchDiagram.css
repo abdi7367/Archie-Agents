@@ -1,0 +1,114 @@
+.arch-diagram {
+  margin: 20px 0;
+  background: linear-gradient(135deg, rgba(15, 15, 35, 0.8), rgba(26, 26, 46, 0.8));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.diagram-title {
+  margin: 0 0 20px 0;
+  font-family: var(--heading);
+  font-size: 20px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+}
+
+.diagram-container {
+  background: rgba(15, 15, 35, 0.5);
+  border-radius: 12px;
+  padding: 20px;
+  min-height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+
+.diagram-loading {
+  color: #a0a0a0;
+  font-family: var(--mono);
+  font-size: 14px;
+  opacity: 0.7;
+}
+
+.diagram-placeholder {
+  color: #606060;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-style: italic;
+}
+
+.diagram-error {
+  color: #ef4444;
+  font-family: var(--mono);
+  font-size: 14px;
+  text-align: center;
+}
+
+.diagram-error pre {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 12px;
+  overflow: auto;
+  font-size: 12px;
+  max-height: 200px;
+}
+
+.diagram-error details {
+  margin-top: 12px;
+}
+
+.diagram-error summary {
+  cursor: pointer;
+  color: #a0a0a0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+/* Mermaid diagram styling */
+.diagram-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.diagram-container .node rect,
+.diagram-container .node circle,
+.diagram-container .node ellipse {
+  fill: rgba(99, 102, 241, 0.2);
+  stroke: #6366f1;
+  stroke-width: 2px;
+}
+
+.diagram-container .node text {
+  fill: #e0e0e0;
+  font-family: var(--mono);
+}
+
+.diagram-container .edgePath path {
+  stroke: #a0a0a0;
+  stroke-width: 2px;
+}
+
+.diagram-container .edgeLabel {
+  fill: #a0a0a0;
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .arch-diagram {
+    padding: 16px;
+    margin: 12px 0;
+  }
+  
+  .diagram-container {
+    padding: 12px;
+    min-height: 200px;
+  }
+}

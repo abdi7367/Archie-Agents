@@ -1,0 +1,118 @@
+.constraints-panel {
+  background: linear-gradient(135deg, rgba(15, 15, 35, 0.8), rgba(26, 26, 46, 0.8));
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 24px;
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
+}
+
+.panel-title {
+  margin: 0 0 20px 0;
+  font-family: var(--heading);
+  font-size: 18px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.panel-title::before {
+  content: '🔧';
+  font-size: 20px;
+}
+
+.no-constraints {
+  text-align: center;
+  color: #606060;
+  font-family: var(--mono);
+  font-size: 14px;
+  font-style: italic;
+  padding: 20px;
+  background: rgba(99, 102, 241, 0.05);
+  border-radius: 12px;
+}
+
+.constraints-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.constraint-item {
+  background: rgba(99, 102, 241, 0.05);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.constraint-item:hover {
+  background: rgba(99, 102, 241, 0.1);
+  border-color: rgba(99, 102, 241, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(99, 102, 241, 0.2);
+}
+
+.constraint-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.constraint-icon {
+  font-size: 16px;
+  opacity: 0.8;
+}
+
+.constraint-key {
+  font-family: var(--heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: #e0e0e0;
+  text-transform: capitalize;
+}
+
+.constraint-value {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: #a0a0a0;
+  padding-left: 24px;
+  line-height: 1.4;
+}
+
+/* Special styling for different constraint types */
+.constraint-value[data-type="budget"] {
+  color: #10b981;
+  font-weight: 600;
+}
+
+.constraint-value[data-type="users"] {
+  color: #3b82f6;
+  font-weight: 600;
+}
+
+.constraint-value[data-type="boolean"] {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+@media (max-width: 768px) {
+  .constraints-panel {
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  
+  .constraint-item {
+    padding: 12px;
+  }
+  
+  .panel-title {
+    font-size: 16px;
+  }
+}
