@@ -1,9 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { runArchie } from '../api/api'
-import ParticleBackground from './ParticleBackground'
 import TypingIndicator from './TypingIndicator'
-import { useSoundEffects } from '../hooks/useSoundEffects'
 import './Home.css'
 
 const Home = () => {
@@ -12,14 +10,43 @@ const Home = () => {
   const [error, setError] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const navigate = useNavigate()
-  const { playClickSound, playHoverSound, playTypingSound } = useSoundEffects()
 
-  const examplePrompts = [
-    "I need to build a B2B SaaS platform for 100k users with a team of 5 developers, $3k/month budget, and need to handle GDPR compliance",
-    "Build a consumer mobile app with 1M users, team of 10, growing traffic pattern, and need to handle PII data",
-    "Create an internal tool for a small team of 3, steady traffic, no compliance requirements, minimal budget",
-    "Design a data pipeline processing 100GB/day with scheduled traffic patterns, team of 8 data engineers",
-    "Build an IoT platform for 50k devices with spiky traffic, team of 6, need real-time processing"
+  const examples = [
+    {
+      prompt: "I need to build a B2B SaaS platform for 100k users with a team of 5 developers, $3k/month budget, and need to handle GDPR compliance",
+      tags: ["B2B SaaS", "100k Users", "GDPR"],
+      tier: "Production",
+      estimate: "$2,800/mo",
+      components: 8
+    },
+    {
+      prompt: "Build a consumer mobile app with 1M users, team of 10, growing traffic pattern, and need to handle PII data",
+      tags: ["Mobile", "1M Users", "High Growth"],
+      tier: "Scale",
+      estimate: "$8,500/mo",
+      components: 12
+    },
+    {
+      prompt: "Create an internal tool for a small team of 3, steady traffic, no compliance requirements, minimal budget",
+      tags: ["Internal Tool", "Small Team", "Low Cost"],
+      tier: "MVP",
+      estimate: "$450/mo",
+      components: 4
+    },
+    {
+      prompt: "Design a data pipeline processing 100GB/day with scheduled traffic patterns, team of 8 data engineers",
+      tags: ["Data Pipeline", "100GB/day", "Analytics"],
+      tier: "Production",
+      estimate: "$5,200/mo",
+      components: 10
+    },
+    {
+      prompt: "Build an IoT platform for 50k devices with spiky traffic, team of 6, need real-time processing",
+      tags: ["IoT", "50k Devices", "Real-time"],
+      tier: "Scale",
+      estimate: "$6,800/mo",
+      components: 11
+    }
   ]
 
   useEffect(() => {
@@ -55,45 +82,68 @@ const Home = () => {
     }
   }
 
-  const handleExampleClick = (prompt) => {
-    setInput(prompt)
+  const handleExampleClick = (example) => {
+    setInput(example.prompt)
     setIsTyping(true)
-    playClickSound()
     setTimeout(() => setIsTyping(false), 2000)
   }
 
   return (
     <div className="home-container">
-      <ParticleBackground />
-      <div className="floating-orbs">
-        <div className="orb orb-1"></div>
-        <div className="orb orb-2"></div>
-        <div className="orb orb-3"></div>
-      </div>
       <div className="terminal-card">
         <h1 className="terminal-title">
-          Archie Architecture Advisor
+          Archie Multi Agent
         </h1>
         
         <p className="terminal-description">
           Describe your product requirements and get AI-powered architecture recommendations
         </p>
 
-        {/* Examples Section - Top */}
+        {/* Examples Section - Hero Preview Cards */}
         <div className="examples-section">
-          <h3 className="examples-title">
-            Example Prompts:
-          </h3>
+          <div className="examples-header">
+            <h3 className="examples-title">
+              See what you'll get
+            </h3>
+            <p className="examples-subtitle">
+              Click any example to see the full architecture recommendation
+            </p>
+          </div>
           <div className="examples-grid">
-            {examplePrompts.map((prompt, index) => (
+            {examples.map((example, index) => (
               <button
                 key={index}
-                onClick={() => handleExampleClick(prompt)}
-                onMouseEnter={playHoverSound}
-                className="example-button"
+                onClick={() => handleExampleClick(example)}
+                className="example-card"
               >
-                <span className="example-arrow">→</span>
-                {prompt}
+                <div className="example-preview">
+                  <div className="preview-header">
+                    <span className={`tier-badge tier-${example.tier.toLowerCase()}`}>
+                      {example.tier}
+                    </span>
+                    <span className="cost-pill">{example.estimate}</span>
+                  </div>
+                  <div className="preview-stats">
+                    <div className="stat">
+                      <span className="stat-value">{example.components}</span>
+                      <span className="stat-label">Components</span>
+                    </div>
+                    <div className="stat-divider"></div>
+                    <div className="stat">
+                      <span className="stat-value">{example.tags[0]}</span>
+                      <span className="stat-label">Type</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="example-prompt">
+                  <span className="example-arrow">→</span>
+                  <span className="prompt-text">{example.prompt}</span>
+                </div>
+                <div className="example-tags">
+                  {example.tags.map((tag, i) => (
+                    <span key={i} className="tag">{tag}</span>
+                  ))}
+                </div>
               </button>
             ))}
           </div>
@@ -108,9 +158,6 @@ const Home = () => {
               onChange={(e) => {
                 setInput(e.target.value)
                 setIsTyping(false)
-                if (e.target.value.length > input.length) {
-                  playTypingSound()
-                }
               }}
               onFocus={() => setIsTyping(true)}
               onBlur={() => setTimeout(() => setIsTyping(false), 1000)}
@@ -129,7 +176,6 @@ const Home = () => {
           <button
             type="submit"
             disabled={!input.trim() || isSubmitting}
-            onMouseEnter={playHoverSound}
             className={`execute-button ${isSubmitting ? 'loading' : ''}`}
           >
             {isSubmitting && (

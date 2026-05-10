@@ -7,14 +7,15 @@ import { getRun, runArchie } from '../api/api'
 import './Results.css'
 
 const TABS = [
+  { id: 'overview', label: 'Overview', icon: '📊' },
   { id: 'architectures', label: 'Architectures', icon: '🏗️' },
-  { id: 'tech', label: 'Technology', icon: '💻' },
-  { id: 'costs', label: 'Costs', icon: '💰' },
+  { id: 'decisions', label: 'Decisions', icon: '⚡' },
+  { id: 'costs', label: 'Cost Model', icon: '💰' },
   { id: 'adrs', label: 'ADRs', icon: '📋' }
 ]
 
 const Results = () => {
-  const [activeTab, setActiveTab] = useState('architectures')
+  const [activeTab, setActiveTab] = useState('overview')
   const [userInput, setUserInput] = useState('')
   const [timestamp, setTimestamp] = useState('')
   const [runData, setRunData] = useState(null)
@@ -119,8 +120,9 @@ const Results = () => {
     }
 
     switch (activeTab) {
+      case 'overview':      return renderOverviewTab()
       case 'architectures': return renderArchitecturesTab()
-      case 'tech':          return renderTechTab()
+      case 'decisions':     return renderDecisionsTab()
       case 'costs':         return renderCostsTab()
       case 'adrs':          return renderAdrsTab()
       default:
@@ -134,8 +136,110 @@ const Results = () => {
     }
   }
 
+  const renderOverviewTab = () => {
+    const architectures = runData.architectures || []
+    const recommendation = runData.recommendation
+
+    if (architectures.length === 0) {
+      return (
+        <div className="placeholder-container">
+          <div className="placeholder-text">No architecture data available</div>
+        </div>
+      )
+    }
+
+    return (
+      <div className="overview-container">
+        {/* Recommendation Section */}
+        {recommendation && (
+          <div className="recommendation-card">
+            <div className="recommendation-header">
+              <span className="recommendation-badge">Recommended</span>
+              <h3 className="recommendation-tier">{recommendation.tier} Tier</h3>
+            </div>
+            <p className="recommendation-reasoning">{recommendation.reasoning}</p>
+          </div>
+        )}
+
+        {/* Comparison Table */}
+        <div className="comparison-section">
+          <h3 className="section-title">Architecture Comparison</h3>
+          <div className="comparison-table">
+            <div className="comparison-header">
+              <div className="comparison-cell">Feature</div>
+              {architectures.map((arch, index) => (
+                <div key={index} className={`comparison-cell tier-${arch.tier?.toLowerCase()}`}>
+                  {arch.tier}
+                </div>
+              ))}
+            </div>
+            
+            <div className="comparison-row">
+              <div className="comparison-cell label">Monthly Cost</div>
+              {architectures.map((arch, index) => (
+                <div key={index} className="comparison-cell">
+                  <span className="cost-value">{arch.estimated_monthly_cost}</span>
+                </div>
+              ))}
+            </div>
+            
+            <div className="comparison-row">
+              <div className="comparison-cell label">Components</div>
+              {architectures.map((arch, index) => (
+                <div key={index} className="comparison-cell">
+                  {arch.components?.length || 0}
+                </div>
+              ))}
+            </div>
+            
+            <div className="comparison-row">
+              <div className="comparison-cell label">Complexity</div>
+              {architectures.map((arch, index) => (
+                <div key={index} className="comparison-cell">
+                  <span className={`complexity-badge ${arch.complexity?.toLowerCase()}`}>
+                    {arch.complexity || 'Medium'}
+                  </span>
+                </div>
+              ))}
+            </div>
+            
+            <div className="comparison-row">
+              <div className="comparison-cell label">Best For</div>
+              {architectures.map((arch, index) => (
+                <div key={index} className="comparison-cell">
+                  <span className="best-for">{arch.best_for || 'General'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Quick Summary Cards */}
+        <div className="summary-cards">
+          {architectures.map((arch, index) => (
+            <div key={index} className={`summary-card tier-${arch.tier?.toLowerCase()}`}>
+              <h4 className="summary-tier">{arch.tier}</h4>
+              <p className="summary-text">{arch.summary}</p>
+              <div className="summary-components">
+                {(arch.components || []).slice(0, 4).map((comp, i) => (
+                  <span key={i} className="component-chip">{comp}</span>
+                ))}
+                {(arch.components || []).length > 4 && (
+                  <span className="component-chip more">+{arch.components.length - 4} more</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   const renderArchitecturesTab = () => {
     const architectures = runData.architectures || []
+    const [selectedTier, setSelectedTier] = useState(architectures[0]?.tier || 'MVP')
+    
+    const selectedArch = architectures.find(a => a.tier === selectedTier) || architectures[0]
 
     if (architectures.length === 0) {
       return (
@@ -147,86 +251,94 @@ const Results = () => {
 
     return (
       <div className="architectures-container">
-        {architectures.map((arch, index) => (
-          <div key={index} className="architecture-card">
-            <div className="architecture-header">
-              <h3 className="architecture-name">{arch.tier}</h3>
-              <span className="architecture-tier">{arch.estimated_monthly_cost}</span>
+        {/* Tier Selector */}
+        <div className="tier-selector">
+          {architectures.map((arch, index) => (
+            <button
+              key={index}
+              className={`tier-button ${selectedTier === arch.tier ? 'active' : ''} tier-${arch.tier?.toLowerCase()}`}
+              onClick={() => setSelectedTier(arch.tier)}
+            >
+              {arch.tier}
+            </button>
+          ))}
+        </div>
+
+        {selectedArch && (
+          <div className={`architecture-detail-card tier-${selectedArch.tier?.toLowerCase()}`}>
+            <div className="detail-header">
+              <h3 className="detail-tier">{selectedArch.tier}</h3>
+              <span className="detail-cost">{selectedArch.estimated_monthly_cost}</span>
             </div>
 
-            <p className="architecture-summary">{arch.summary}</p>
+            <p className="detail-summary">{selectedArch.summary}</p>
 
-            <div className="architecture-details">
-              <div className="detail-section">
+            <div className="detail-grid">
+              <div className="detail-block">
                 <h4>Components</h4>
-                <div className="components-list">
-                  {(arch.components || []).map((comp, i) => (
-                    <span key={i} className="component-tag">{comp}</span>
+                <div className="components-grid">
+                  {(selectedArch.components || []).map((comp, i) => (
+                    <span key={i} className="component-pill">{comp}</span>
                   ))}
                 </div>
               </div>
 
-              <div className="detail-section">
+              <div className="detail-block">
                 <h4>Data Flow</h4>
-                {(arch.data_flow || []).map((step, i) => (
-                  <p key={i}>{i + 1}. {step}</p>
-                ))}
+                <div className="flow-steps">
+                  {(selectedArch.data_flow || []).map((step, i) => (
+                    <div key={i} className="flow-step">
+                      <span className="step-number">{i + 1}</span>
+                      <span className="step-text">{step}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
 
-              {arch.scaling_approach && (
-                <div className="detail-section">
+              {selectedArch.scaling_approach && (
+                <div className="detail-block">
                   <h4>Scaling Approach</h4>
-                  <p>{arch.scaling_approach}</p>
+                  <p className="scaling-text">{selectedArch.scaling_approach}</p>
                 </div>
               )}
 
-              {(arch.tradeoffs?.pros?.length > 0 || arch.tradeoffs?.cons?.length > 0) && (
-                <div className="detail-section">
+              {(selectedArch.tradeoffs?.pros?.length > 0 || selectedArch.tradeoffs?.cons?.length > 0) && (
+                <div className="detail-block tradeoffs">
                   <h4>Trade-offs</h4>
-                  {(arch.tradeoffs.pros || []).map((pro, i) => (
-                    <p key={`pro-${i}`}>✓ {pro}</p>
-                  ))}
-                  {(arch.tradeoffs.cons || []).map((con, i) => (
-                    <p key={`con-${i}`}>✗ {con}</p>
-                  ))}
+                  <div className="tradeoffs-grid">
+                    <div className="pros">
+                      <span className="tradeoff-label">Pros</span>
+                      {(selectedArch.tradeoffs.pros || []).map((pro, i) => (
+                        <p key={`pro-${i}`} className="pro-item">✓ {pro}</p>
+                      ))}
+                    </div>
+                    <div className="cons">
+                      <span className="tradeoff-label">Cons</span>
+                      {(selectedArch.tradeoffs.cons || []).map((con, i) => (
+                        <p key={`con-${i}`} className="con-item">✗ {con}</p>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {arch.observability?.length > 0 && (
-                <div className="detail-section">
-                  <h4>Observability</h4>
-                  {arch.observability.map((item, i) => (
-                    <p key={i}>• {item}</p>
-                  ))}
-                </div>
-              )}
-
-              {arch.security?.length > 0 && (
-                <div className="detail-section">
-                  <h4>Security</h4>
-                  {arch.security.map((item, i) => (
-                    <p key={i}>• {item}</p>
-                  ))}
-                </div>
-              )}
-
-              {arch.mermaid_diagram && (
-                <div className="detail-section">
+              {selectedArch.mermaid_diagram && (
+                <div className="detail-block full-width">
                   <h4>Architecture Diagram</h4>
                   <ArchDiagram
-                    diagramSrc={arch.mermaid_diagram}
-                    title={`${arch.tier} Diagram`}
+                    diagramSrc={selectedArch.mermaid_diagram}
+                    title={`${selectedArch.tier} Architecture`}
                   />
                 </div>
               )}
             </div>
           </div>
-        ))}
+        )}
       </div>
     )
   }
 
-  const renderTechTab = () => {
+  const renderDecisionsTab = () => {
     const techDecisions = runData.tech_decisions || []
 
     if (techDecisions.length === 0) {
@@ -238,44 +350,53 @@ const Results = () => {
     }
 
     return (
-      <div className="tech-decisions-container">
+      <div className="decisions-container">
         {techDecisions.map((tier, index) => (
-          <div key={index} className="tech-decision-card">
-            <div className="decision-header">
-              <h3 className="decision-title">{tier.tier}</h3>
+          <div key={index} className={`decision-tier-card tier-${tier.tier?.toLowerCase()}`}>
+            <div className="decision-tier-header">
+              <h3 className="decision-tier-title">{tier.tier}</h3>
+              {tier.overall_recommendation && (
+                <p className="tier-recommendation">{tier.overall_recommendation}</p>
+              )}
             </div>
 
-            <p className="architecture-summary">{tier.overall_recommendation}</p>
-
             {tier.risk_flags?.length > 0 && (
-              <div className="detail-section">
-                <h4>Risk Flags</h4>
-                {tier.risk_flags.map((flag, i) => (
-                  <p key={i}>⚠ {flag}</p>
-                ))}
+              <div className="risk-section">
+                <h4 className="section-label">Risk Flags</h4>
+                <div className="risk-flags">
+                  {tier.risk_flags.map((flag, i) => (
+                    <span key={i} className="risk-flag">⚠ {flag}</span>
+                  ))}
+                </div>
               </div>
             )}
 
-            <div className="decision-content">
-              <h4>Technology Decisions</h4>
-              <div className="options-list">
-                {(tier.decisions || []).map((decision, i) => (
-                  <div key={i} className="option-item">
-                    <div className="decision-header">
-                      <span className="option-name">{decision.category}</span>
-                      <span className="winner-badge">Score: {decision.score}/10</span>
-                    </div>
-                    <p><strong>Chosen:</strong> {decision.chosen}</p>
-                    <p>{decision.justification}</p>
-                    {decision.alternatives?.length > 0 && (
-                      <p><strong>Alternatives:</strong> {decision.alternatives.join(', ')}</p>
-                    )}
-                    {decision.when_to_switch && (
-                      <p><strong>Switch when:</strong> {decision.when_to_switch}</p>
-                    )}
+            <div className="decisions-grid">
+              {(tier.decisions || []).map((decision, i) => (
+                <div key={i} className="decision-card">
+                  <div className="decision-category">
+                    <span className="category-name">{decision.category}</span>
+                    <span className="score-badge">{decision.score}/10</span>
                   </div>
-                ))}
-              </div>
+                  <div className="decision-choice">
+                    <span className="choice-label">Chosen:</span>
+                    <span className="choice-value">{decision.chosen}</span>
+                  </div>
+                  <p className="decision-justification">{decision.justification}</p>
+                  {decision.alternatives?.length > 0 && (
+                    <div className="alternatives">
+                      <span className="alt-label">Alternatives:</span>
+                      <span className="alt-list">{decision.alternatives.join(', ')}</span>
+                    </div>
+                  )}
+                  {decision.when_to_switch && (
+                    <div className="switch-condition">
+                      <span className="switch-label">Switch when:</span>
+                      <span className="switch-text">{decision.when_to_switch}</span>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         ))}
@@ -284,9 +405,101 @@ const Results = () => {
   }
 
   const renderCostsTab = () => {
+    const architectures = runData.architectures || []
+    const costAnalysis = runData.cost_analysis || {}
+
+    if (architectures.length === 0) {
+      return (
+        <div className="placeholder-container">
+          <div className="placeholder-text">No cost data available</div>
+        </div>
+      )
+    }
+
     return (
-      <div className="placeholder-container">
-        <div className="placeholder-text">Cost analysis coming soon</div>
+      <div className="costs-container">
+        {/* Cost Summary Cards */}
+        <div className="cost-summary-grid">
+          {architectures.map((arch, index) => (
+            <div key={index} className={`cost-card tier-${arch.tier?.toLowerCase()}`}>
+              <h3 className="cost-tier">{arch.tier}</h3>
+              <div className="cost-amount">{arch.estimated_monthly_cost}</div>
+              <div className="cost-period">per month</div>
+              <div className="cost-breakdown">
+                <div className="cost-line">
+                  <span>Components:</span>
+                  <span>{arch.components?.length || 0}</span>
+                </div>
+                <div className="cost-line">
+                  <span>Complexity:</span>
+                  <span>{arch.complexity || 'Medium'}</span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Detailed Cost Table */}
+        {costAnalysis.breakdown && (
+          <div className="cost-detail-section">
+            <h3 className="section-title">Cost Breakdown</h3>
+            <div className="cost-table-container">
+              <table className="cost-table">
+                <thead>
+                  <tr>
+                    <th>Component</th>
+                    <th>Service</th>
+                    <th>Instance</th>
+                    <th>Monthly Cost</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {costAnalysis.breakdown.map((item, index) => (
+                    <tr key={index}>
+                      <td>{item.component}</td>
+                      <td>{item.service}</td>
+                      <td>{item.instance_type || 'N/A'}</td>
+                      <td className="cost-value">{item.monthly_cost}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Scaling Costs */}
+        {costAnalysis.scaling_projection && (
+          <div className="cost-detail-section">
+            <h3 className="section-title">Scaling Projections</h3>
+            <div className="scaling-grid">
+              <div className="scaling-card">
+                <span className="scaling-label">Current</span>
+                <span className="scaling-value">{costAnalysis.scaling_projection.current}</span>
+              </div>
+              <div className="scaling-card">
+                <span className="scaling-label">10x Traffic</span>
+                <span className="scaling-value">{costAnalysis.scaling_projection['10x']}</span>
+              </div>
+              <div className="scaling-card">
+                <span className="scaling-label">Cliff Point</span>
+                <span className="scaling-value">{costAnalysis.scaling_projection.cliff}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Cost Notes */}
+        {costAnalysis.notes && (
+          <div className="cost-notes">
+            <h4 className="notes-title">Cost Optimization Notes</h4>
+            <ul>
+              {costAnalysis.notes.map((note, index) => (
+                <li key={index}>{note}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     )
   }

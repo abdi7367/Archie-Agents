@@ -1,8 +1,27 @@
-import React from 'react'
+import React, { useState } from 'react'
 import './ConstraintsPanel.css'
 
-const ConstraintsPanel = ({ constraints }) => {
-  if (!constraints || Object.keys(constraints).length === 0) {
+const INFERRED_DEFAULTS = {
+  cloud_provider: 'AWS',
+  region: 'us-east-1',
+  preferred_language: 'TypeScript',
+  database_type: 'PostgreSQL',
+  cache_strategy: 'Redis',
+  container_orchestration: 'Docker Compose',
+  ci_cd: 'GitHub Actions',
+  monitoring: 'Datadog',
+  logging: 'ELK Stack'
+}
+
+const ConstraintsPanel = ({ constraints, inferred = {}, onConstraintChange }) => {
+  const [editingKey, setEditingKey] = useState(null)
+  const [editValue, setEditValue] = useState('')
+
+  // Merge provided constraints with inferred defaults
+  const allConstraints = { ...INFERRED_DEFAULTS, ...constraints, ...inferred }
+  const inferredKeys = Object.keys({ ...INFERRED_DEFAULTS, ...inferred })
+  
+  if (!allConstraints || Object.keys(allConstraints).length === 0) {
     return (
       <div className="constraints-panel">
         <h3 className="panel-title">Constraints</h3>
@@ -15,7 +34,7 @@ const ConstraintsPanel = ({ constraints }) => {
 
   const formatConstraintValue = (key, value) => {
     if (typeof value === 'boolean') {
-      return value ? '✅ Yes' : '❌ No'
+      return value ? 'Yes' : 'No'
     }
     if (typeof value === 'number') {
       if (key.toLowerCase().includes('budget') || key.toLowerCase().includes('cost')) {
@@ -40,24 +59,76 @@ const ConstraintsPanel = ({ constraints }) => {
     if (lowerKey.includes('compliance') || lowerKey.includes('security')) return '🔒'
     if (lowerKey.includes('performance') || lowerKey.includes('scalability')) return '⚡'
     if (lowerKey.includes('deadline') || lowerKey.includes('timeline')) return '📅'
-    return '📋'
+    if (lowerKey.includes('cloud')) return '☁️'
+    if (lowerKey.includes('database') || lowerKey.includes('cache')) return '🗄️'
+    if (lowerKey.includes('container') || lowerKey.includes('docker')) return '�'
+    if (lowerKey.includes('monitoring') || lowerKey.includes('logging')) return '📊'
+    return '�📋'
+  }
+
+  const isInferred = (key) => inferredKeys.includes(key) && !constraints?.[key]
+
+  const handleEditClick = (key, value) => {
+    setEditingKey(key)
+    setEditValue(value)
+  }
+
+  const handleSave = () => {
+    if (onConstraintChange && editingKey) {
+      onConstraintChange(editingKey, editValue)
+    }
+    setEditingKey(null)
+    setEditValue('')
+  }
+
+  const handleCancel = () => {
+    setEditingKey(null)
+    setEditValue('')
   }
 
   return (
     <div className="constraints-panel">
       <h3 className="panel-title">Project Constraints</h3>
+      <p className="panel-subtitle">
+        Inferred values shown. Click any value to edit.
+      </p>
       <div className="constraints-list">
-        {Object.entries(constraints).map(([key, value]) => (
-          <div key={key} className="constraint-item">
+        {Object.entries(allConstraints).map(([key, value]) => (
+          <div key={key} className={`constraint-item ${isInferred(key) ? 'inferred' : ''}`}>
             <div className="constraint-header">
               <span className="constraint-icon">{getConstraintIcon(key)}</span>
               <span className="constraint-key">
                 {key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
               </span>
             </div>
-            <div className="constraint-value">
-              {formatConstraintValue(key, value)}
-            </div>
+            
+            {editingKey === key ? (
+              <div className="constraint-edit">
+                <input
+                  type="text"
+                  value={editValue}
+                  onChange={(e) => setEditValue(e.target.value)}
+                  className="constraint-input"
+                  autoFocus
+                />
+                <div className="edit-actions">
+                  <button onClick={handleSave} className="edit-btn save">✓</button>
+                  <button onClick={handleCancel} className="edit-btn cancel">✗</button>
+                </div>
+              </div>
+            ) : (
+              <div 
+                className="constraint-value editable"
+                onClick={() => handleEditClick(key, value)}
+                title="Click to edit"
+              >
+                {formatConstraintValue(key, value)}
+                {isInferred(key) && (
+                  <span className="inferred-badge">Inferred</span>
+                )}
+                <span className="edit-hint">✎</span>
+              </div>
+            )}
           </div>
         ))}
       </div>
