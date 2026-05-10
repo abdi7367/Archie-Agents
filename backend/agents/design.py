@@ -16,21 +16,15 @@ import json
 from functools import lru_cache
 from typing import Optional
 
-from groq import Client
 from pydantic import ValidationError
 
-from backend.agents.requirements import _load_groq_api_key
+from backend.llm import get_client, get_model_name
 from backend.prompts.design import build_design_prompt
 from backend.state import ArchieState, Architecture, DesignOutput
 
 
 _MAX_ATTEMPTS = 3
-_MODEL = "llama-3.3-70b-versatile"
 
-
-@lru_cache(maxsize=1)
-def _get_client() -> Client:
-    return Client(api_key=_load_groq_api_key())
 
 
 def design_agent(state: ArchieState) -> dict:
@@ -48,7 +42,7 @@ def design_agent(state: ArchieState) -> dict:
             "error": "Design agent received no constraints — requirements agent may have failed.",
         }
 
-    client = _get_client()
+    client = get_client()
     system_prompt, user_prompt = build_design_prompt(constraints)
 
     messages = [
@@ -71,7 +65,7 @@ def design_agent(state: ArchieState) -> dict:
             })
 
         response = client.chat.completions.create(
-            model=_MODEL,
+            model=get_model_name(),
             messages=messages,
             temperature=0.4,    # slight creativity for architecture variety
             max_tokens=4000,    # 3 detailed architectures need room

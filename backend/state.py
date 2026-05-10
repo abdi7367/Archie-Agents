@@ -100,6 +100,27 @@ class Architecture(BaseModel):
 
 class DesignOutput(BaseModel):
     architectures: List[Architecture]
+
+class TechDecision(BaseModel):
+    """A single technology decision within a tier."""
+    category: str
+    chosen: str
+    score: int                                        # 1-10
+    justification: str
+    alternatives: List[str] = Field(default_factory=list)
+    when_to_switch: str = ""
+
+
+class TierDecisions(BaseModel):
+    """All tech decisions for one architecture tier."""
+    tier: str
+    decisions: List[TechDecision] = Field(default_factory=list)
+    overall_recommendation: str = ""
+    risk_flags: List[str] = Field(default_factory=list)
+
+
+class TechDecisionsOutput(BaseModel):
+    tech_decisions: List[TierDecisions]
 # ─────────────────────────────────────────
 # ARCHIESTATE — the LangGraph state object
 # ─────────────────────────────────────────
@@ -119,6 +140,9 @@ class ArchieState(TypedDict):
 
     #Filled by Design agent which gives 3 options
     architectures: Optional[List[dict]]
+
+    #Filled by Tech Decision Agent 
+    tech_decisions: Optional[List[dict]]
 
     # Updated by each agent as it runs — useful for frontend status display
     current_agent: str

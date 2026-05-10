@@ -47,6 +47,8 @@ class RunResponse(BaseModel):
     thread_id: str
     current_agent: str
     constraints: Optional[dict] = None
+    architectures: Optional[list] = None      
+    tech_decisions: Optional[list] = None
     error: Optional[str] = None
     status: str   # "complete" | "error"
 
@@ -86,6 +88,8 @@ async def run_pipeline(request: RunRequest) -> RunResponse:
         thread_id=thread_id,
         current_agent=final_state.get("current_agent", "unknown"),
         constraints=constraints.model_dump() if isinstance(constraints, Constraints) else constraints,
+        architectures=final_state.get("architectures"),      
+        tech_decisions=final_state.get("tech_decisions"),
         error=final_state.get("error"),
         status="error" if final_state.get("error") else "complete",
     )
@@ -114,6 +118,8 @@ async def get_run(thread_id: str) -> RunResponse:
         thread_id=thread_id,
         current_agent=state.get("current_agent", "unknown"),
         constraints=constraints.model_dump() if isinstance(constraints, Constraints) else constraints,
+        architectures=state.get("architectures"),
+        tech_decisions=state.get("tech_decisions"),
         error=state.get("error"),
         status="error" if state.get("error") else "complete",
     )

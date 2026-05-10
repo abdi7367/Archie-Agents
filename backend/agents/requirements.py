@@ -10,51 +10,17 @@ Changes from v1:
 
 import json
 import os
-from functools import lru_cache
-from pathlib import Path
 from typing import Optional
 
-from groq import Client
 from pydantic import ValidationError
 
+from backend.llm import get_client, get_model_name
+from backend.prompts.requirements import build_requirements_prompt  # keep this one
 from backend.state import ArchieState, Constraints
-from backend.prompts.requirements import build_requirements_prompt
-
-
-# ── Lazy client — never crashes on import ────────────────────────────────────
-
-def _load_groq_api_key() -> str:
-    api_key = os.getenv("GROQ_API_KEY")
-    if api_key:
-        return api_key
-
-    env_path = Path(__file__).resolve().parents[1] / ".env"
-    if env_path.exists():
-        for line in env_path.read_text(encoding="utf-8").splitlines():
-            parsed = line.strip()
-            if not parsed or parsed.startswith("#") or "=" not in parsed:
-                continue
-            key, value = parsed.split("=", 1)
-            if key.strip() == "GROQ_API_KEY" and value.strip():
-                os.environ["GROQ_API_KEY"] = value.strip()
-                return value.strip()
-
-    raise RuntimeError(
-        "Missing GROQ_API_KEY. Set it in your environment or add "
-        "GROQ_API_KEY=... to backend/.env."
-    )
-
-
-@lru_cache(maxsize=1)
-def _get_client() -> Client:
-    """Return a cached Groq client. Initialized on first call only."""
-    return Client(api_key=_load_groq_api_key())
-
 
 # ── Agent ────────────────────────────────────────────────────────────────────
 
 _MAX_ATTEMPTS = 3
-_MODEL = "llama-3.3-70b-versatile"
 
 
 def requirements_agent(state: ArchieState) -> dict:
@@ -68,7 +34,7 @@ def requirements_agent(state: ArchieState) -> dict:
 
     Returns a partial ArchieState dict. LangGraph merges this into the full state.
     """
-    client = _get_client()
+    client = get_client()
     system_prompt = build_requirements_prompt()
 
     messages = [
@@ -97,7 +63,7 @@ def requirements_agent(state: ArchieState) -> dict:
             })
 
         response = client.chat.completions.create(
-            model=_MODEL,
+            model=get_model_name(),
             messages=messages,
             temperature=0.2,       # lower = more deterministic JSON
             max_tokens=1000,

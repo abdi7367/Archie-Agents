@@ -19,6 +19,7 @@ from backend.state import ArchieState
 from backend.agents.requirements import requirements_agent
 from backend.agents.design import design_agent
 
+from backend.agents.tech_decisions import tech_decisions_agent
 # ── Error handler node ───────────────────────────────────────────────────────
 
 def error_handler(state: ArchieState) -> dict:
@@ -45,6 +46,7 @@ def build_graph():
     # ── Nodes ──
     graph.add_node("requirements", requirements_agent)
     graph.add_node("design", design_agent)
+    graph.add_node("tech_decisions", tech_decisions_agent)
     graph.add_node("error_handler", error_handler)
 
     # ── Entry point ──
@@ -58,6 +60,11 @@ def build_graph():
     )
     graph.add_conditional_edges(
         "design",
+        lambda s: route(s, "tech_decisions"),
+        {"tech_decisions": "tech_decisions", "error_handler": "error_handler"},
+    )
+    graph.add_conditional_edges(
+        "tech_decisions",
         lambda s: route(s, END),
         {END: END, "error_handler": "error_handler"},
     )
