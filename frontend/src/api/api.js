@@ -1,6 +1,6 @@
 export const runArchie = async (userInput) => {
   try {
-    const response = await fetch('/api/analyze', {
+    const response = await fetch('/api/run', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -22,7 +22,7 @@ export const runArchie = async (userInput) => {
 
 export const getRun = async (threadId) => {
   try {
-    const response = await fetch(`/run/${threadId}`, {
+    const response = await fetch(`/api/run/${threadId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
