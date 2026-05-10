@@ -4,7 +4,14 @@ import AgentPipeline from './AgentPipeline'
 import ConstraintsPanel from './ConstraintsPanel'
 import ArchDiagram from './ArchDiagram'
 import AdrCard from './AdrCard'
-import { getRun, runArchie } from '../api/api'
+import ClarificationFlow from './ClarificationFlow'
+import {
+  getRun,
+  runArchie,
+  pollRun,
+  submitClarification,
+  PIPELINE_POLL_TIMEOUT_MS,
+} from '../api/api'
 import './Results.css'
 
 const TABS = [
@@ -45,15 +52,23 @@ const Results = () => {
   }, [runData])
 
   useEffect(() => {
-    // If Home already passed the full result, use it directly — no re-fetch
-    if (routerState.runData) {
-      setRunData(routerState.runData)
-      setLoading(false)
-      return
-    }
-  
     const threadId = routerState.threadId || sessionStorage.getItem('thread_id')
-  
+    const passed = routerState.runData
+
+    // Home can pass stale or partial router state (e.g. old bug: skip clarified → END).
+    // If the run claims complete but has no architecture payload, re-fetch from API.
+    if (passed) {
+      const emptyComplete =
+        passed.status === 'complete' &&
+        !passed.error &&
+        (!Array.isArray(passed.architectures) || passed.architectures.length === 0)
+      if (!emptyComplete) {
+        setRunData(passed)
+        setLoading(false)
+        return
+      }
+    }
+
     if (threadId) {
       fetchRunData(threadId)
     } else if (userInput) {
@@ -68,7 +83,17 @@ const Results = () => {
     try {
       setLoading(true)
       setError('')
-      const data = await getRun(threadId)
+      let data = await getRun(threadId)
+      // Backend returns immediately after POST — poll until the pipeline finishes
+      // (same behavior as Home) so we never stick on pending/running + empty payloads.
+      if (data.status === 'pending' || data.status === 'running') {
+        data = await pollRun(
+          threadId,
+          (update) => setRunData(update),
+          2500,
+          PIPELINE_POLL_TIMEOUT_MS,
+        )
+      }
       setRunData(data)
     } catch (err) {
       setError('Failed to load results. Please try again.')
@@ -83,15 +108,46 @@ const Results = () => {
       setLoading(true)
       setError('')
       setIsInitialRun(true)
-      const result = await runArchie(input)
-      sessionStorage.setItem('thread_id', result.thread_id)
-      setRunData(result)
+      const { thread_id } = await runArchie(input)
+      sessionStorage.setItem('thread_id', thread_id)
+      const final = await pollRun(
+        thread_id,
+        (update) => setRunData(update),
+        2500,
+        PIPELINE_POLL_TIMEOUT_MS,
+      )
+      setRunData(final)
     } catch (err) {
       setError('Failed to start analysis. Please try again.')
       console.error('Error running Archie analysis:', err)
     } finally {
       setLoading(false)
       setIsInitialRun(false)
+    }
+  }
+
+  const handleClarifyFromResults = async (answers) => {
+    const tid = runData?.thread_id || sessionStorage.getItem('thread_id')
+    if (!tid) {
+      setError('Missing thread id. Start a new analysis from the home page.')
+      return
+    }
+    setLoading(true)
+    setError('')
+    try {
+      await submitClarification(tid, answers)
+      const final = await pollRun(
+        tid,
+        (update) => setRunData(update),
+        2500,
+        PIPELINE_POLL_TIMEOUT_MS,
+      )
+      setRunData(final)
+    } catch (err) {
+      setError(err.message || 'Failed to submit clarification. Please try again.')
+      console.error('Clarification error:', err)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -102,7 +158,7 @@ const Results = () => {
       return (
         <div className="loading-container">
           {isInitialRun ? (
-            <AgentPipeline runData={null} />
+            <AgentPipeline runData={runData} />
           ) : (
             <>
               <div className="loading-spinner"></div>
@@ -550,6 +606,50 @@ const Results = () => {
   }
 
   // ── Render ───────────────────────────────────────────────────────────────
+
+  const clarifyQuestions = runData?.clarification_questions || []
+  const showClarify =
+    runData &&
+    runData.status === 'awaiting_clarification' &&
+    clarifyQuestions.length > 0 &&
+    !loading
+
+  if (showClarify) {
+    return (
+      <div className="results-container">
+        <div className="results-header">
+          <h1 className="results-title">Analysis Results</h1>
+          <div className="results-meta">
+            <div className="meta-item">
+              <span className="meta-label">Query:</span>{' '}
+              {userInput.substring(0, 50)}{userInput.length > 50 ? '…' : ''}
+            </div>
+            <div className="meta-item">
+              <span className="meta-label">Time:</span>{' '}
+              {timestamp ? new Date(timestamp).toLocaleString() : '--'}
+            </div>
+          </div>
+        </div>
+
+        <div className="results-clarify-section">
+          <p className="results-clarify-lead">
+            A few quick questions so we can tailor the architecture.
+          </p>
+          <ClarificationFlow
+            questions={clarifyQuestions}
+            assumptions={runData.assumptions || []}
+            onSubmit={handleClarifyFromResults}
+            onSkip={() => handleClarifyFromResults({})}
+          />
+          {error && (
+            <div className="results-clarify-error" role="alert">
+              {error}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="results-container">

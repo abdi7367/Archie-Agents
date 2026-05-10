@@ -2,7 +2,7 @@
 
 Endpoints:
   POST /run          — start a pipeline run in the background, returns thread_id immediately
-  GET  /run/{id}     — poll the state of a run (pending | running | complete | error)
+  GET  /run/{id}     — poll the state of a run (pending | running | awaiting_clarification | complete | error)
   GET  /health       — liveness check
 
 FIX: The original api.py called ainvoke() synchronously inside the POST handler.
@@ -93,11 +93,14 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     thread_id: str
-    status: str                          # "pending" | "running" | "complete" | "error"
+    status: str                          # "pending" | "running" | "awaiting_clarification" | "complete" | "error"
     current_agent: Optional[str] = None
     constraints: Optional[dict] = None
     architectures: Optional[list] = None
     tech_decisions: Optional[list] = None
+    clarification_questions: Optional[list] = None
+    assumptions: Optional[list] = None
+    overall_confidence: Optional[float] = None
     error: Optional[str] = None
 
 class ClarifyRequest(BaseModel):
@@ -115,11 +118,13 @@ async def _run_pipeline(thread_id: str, user_input: str) -> None:
         await archie_graph.ainvoke({"user_input": user_input}, config=config)
         snap = await archie_graph.aget_state(config)
         values = (snap.values if snap else None) or {}
+        if not isinstance(values, dict):
+            values = {}
         if values.get("error") or values.get("current_agent") == "error":
             _set_status(thread_id, "error")
-        elif values.get("current_agent") == "clarifying":
-            # Interrupted before clarifying — keep running until POST /clarify
-            _set_status(thread_id, "running")
+        elif _needs_clarification(values, snap.next if snap else ()):
+            # Graph interrupted before `clarifying` — client must POST /clarify
+            _set_status(thread_id, "awaiting_clarification")
         else:
             _set_status(thread_id, "complete")
     except Exception as exc:
@@ -133,7 +138,14 @@ async def _resume_pipeline(thread_id: str) -> None:
     _set_status(thread_id, "running")
     try:
         await archie_graph.ainvoke(None, config=config)
-        _set_status(thread_id, "complete")
+        snap = await archie_graph.aget_state(config)
+        values = (snap.values if snap else None) or {}
+        if not isinstance(values, dict):
+            values = {}
+        if values.get("error") or values.get("current_agent") == "error":
+            _set_status(thread_id, "error")
+        else:
+            _set_status(thread_id, "complete")
     except Exception as exc:
         _set_status(thread_id, "error")
         print(f"[Archie] Resume error for {thread_id}: {exc}")
@@ -141,15 +153,65 @@ async def _resume_pipeline(thread_id: str) -> None:
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _serialize_state(thread_id: str, state: dict[str, Any]) -> RunResponse:
+def _needs_clarification(state: dict[str, Any], next_nodes: tuple[str, ...]) -> bool:
+    """
+    True when the graph is paused before the clarifying node with questions to show.
+
+    LangGraph sets `next` to ('clarifying',) on interrupt_before; do not rely on
+    `current_agent` alone — channel merge / checkpoints may differ from tests.
+    """
+    questions = state.get("clarification_questions") or []
+    if isinstance(questions, list) and len(questions) == 0:
+        return False
+    if not questions:
+        return False
+    if state.get("error"):
+        return False
+    if state.get("current_agent") == "clarifying":
+        return True
+    return "clarifying" in next_nodes
+
+
+def _clarification_questions_to_json(raw: Any) -> list | None:
+    """Normalize graph state clarification_questions to JSON-serializable dicts."""
+    if not raw:
+        return None
+    out: list[dict[str, Any]] = []
+    for q in raw:
+        if hasattr(q, "model_dump"):
+            out.append(q.model_dump())
+        elif isinstance(q, dict):
+            out.append(q)
+    return out or None
+
+
+def _serialize_state(
+    thread_id: str,
+    state: dict[str, Any],
+    *,
+    next_nodes: tuple[str, ...] = (),
+) -> RunResponse:
     """Convert raw graph state dict into a RunResponse."""
     constraints = state.get("constraints")
     agent_error = state.get("error")
     agent_status = _get_status(thread_id) or "complete"
+    questions = _clarification_questions_to_json(state.get("clarification_questions")) or []
 
     # If the graph itself flagged an error, override the status
     if agent_error:
         agent_status = "error"
+    elif _needs_clarification(state, next_nodes):
+        # Human-in-the-loop pause — client should show questions and POST /clarify
+        agent_status = "awaiting_clarification"
+
+    assumptions_raw = state.get("assumptions")
+    assumptions: list[str] | None
+    if assumptions_raw is None:
+        assumptions = None
+    elif isinstance(assumptions_raw, list):
+        assumptions = [str(a) for a in assumptions_raw]
+    else:
+        assumptions = None
 
     return RunResponse(
         thread_id=thread_id,
@@ -162,6 +224,9 @@ def _serialize_state(thread_id: str, state: dict[str, Any]) -> RunResponse:
         ),
         architectures=state.get("architectures"),
         tech_decisions=state.get("tech_decisions"),
+        clarification_questions=questions or None,
+        assumptions=assumptions,
+        overall_confidence=state.get("overall_confidence"),
         error=agent_error,
     )
 
@@ -180,7 +245,7 @@ async def start_run(request: RunRequest, background_tasks: BackgroundTasks) -> R
 
     # Avoid re-running a thread that's already in flight or complete
     existing_status = _get_status(thread_id)
-    if existing_status in ("running", "complete"):
+    if existing_status in ("running", "complete", "awaiting_clarification"):
         # Just return current state without kicking off another run
         return await get_run(thread_id)
 
@@ -264,7 +329,10 @@ async def get_run(thread_id: str) -> RunResponse:
             current_agent="requirements",
         )
 
-    return _serialize_state(thread_id, snapshot.values)
+    values = snapshot.values
+    if not isinstance(values, dict):
+        values = {}
+    return _serialize_state(thread_id, values, next_nodes=snapshot.next)
 
 
 @app.get("/health")

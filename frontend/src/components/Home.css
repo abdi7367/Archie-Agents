@@ -394,3 +394,58 @@
     font-size: 28px;
   }
 }
+/* ── Add these rules to the BOTTOM of your existing Home.css ── */
+
+/* Clarification mode — full-screen focused UI */
+.terminal-card.clarify-mode {
+  max-width: 680px;
+  padding: 48px 56px;
+}
+
+.clarify-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.clarify-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.clarify-logo {
+  font-size: 28px;
+  color: #6366f1;
+  filter: drop-shadow(0 0 8px rgba(99, 102, 241, 0.6));
+}
+
+.clarify-title {
+  font-family: var(--heading);
+  font-size: 24px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #e0e0e0, #6366f1, #a855f7);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.clarify-subtitle {
+  color: #606070;
+  font-family: var(--mono);
+  font-size: 13px;
+  margin: 0;
+  letter-spacing: 0.3px;
+}
+
+/* live pipeline shown while analyzing after clarification */
+.live-pipeline {
+  margin-bottom: 28px;
+}
+
+@media (max-width: 680px) {
+  .terminal-card.clarify-mode {
+    padding: 32px 24px;
+  }
+}

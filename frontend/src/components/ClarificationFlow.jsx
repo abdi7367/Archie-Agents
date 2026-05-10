@@ -5,73 +5,67 @@ import './ClarificationFlow.css'
  * ClarificationFlow
  *
  * Props:
- *   questions       — array of ClarificationQuestion objects from the API
- *   assumptions     — array of strings (inferred assumptions)
- *   onSubmit(answers) — called when user submits all answers
- *   onSkip()        — called when user wants to skip and generate anyway
+ *   questions  — array of ClarificationQuestion from the API
+ *                Each has: id | field, question, options, hint, allow_freetext
+ *   assumptions — array of strings (inferred values shown as context)
+ *   onSubmit(answers) — { [field]: value } dict
+ *   onSkip()  — proceed without answering
  */
-const ClarificationFlow = ({ questions, assumptions, onSubmit, onSkip }) => {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [answers, setAnswers] = useState({})        // { question_id: value }
-  const [freetext, setFreetext] = useState({})      // { question_id: string }
-  const [showFreetext, setShowFreetext] = useState({})
-  const [animating, setAnimating] = useState(false)
+const ClarificationFlow = ({ questions = [], assumptions = [], onSubmit, onSkip }) => {
+  const [index, setIndex] = useState(0)
+  const [answers, setAnswers] = useState({})
+  const [freetext, setFreetext] = useState('')
+  const [showFreetext, setShowFreetext] = useState(false)
+  const [exiting, setExiting] = useState(false)
   const inputRef = useRef(null)
 
-  const currentQuestion = questions[currentIndex]
-  const isLast = currentIndex === questions.length - 1
-  const progress = ((currentIndex) / questions.length) * 100
+  const q = questions[index]
+  const isLast = index === questions.length - 1
+  const qKey = q?.field || q?.id  // backend may use either
 
   useEffect(() => {
-    // Focus freetext input when it appears
-    if (showFreetext[currentQuestion?.id] && inputRef.current) {
-      inputRef.current.focus()
-    }
-  }, [showFreetext, currentQuestion?.id])
+    if (showFreetext && inputRef.current) inputRef.current.focus()
+  }, [showFreetext])
 
-  const selectOption = (questionId, value) => {
-    setAnswers(prev => ({ ...prev, [questionId]: value }))
-    // Auto-advance after a short delay
-    setTimeout(() => advance(questionId, value), 300)
-  }
+  if (!q) return null
 
-  const advance = (questionId, value) => {
-    const finalAnswers = { ...answers, [questionId]: value }
-    setAnswers(finalAnswers)
+  const advance = (key, value) => {
+    const next = { ...answers, [key]: value }
+    setAnswers(next)
+    setShowFreetext(false)
+    setFreetext('')
 
     if (isLast) {
-      onSubmit(finalAnswers)
+      onSubmit(next)
       return
     }
 
-    setAnimating(true)
+    setExiting(true)
     setTimeout(() => {
-      setCurrentIndex(i => i + 1)
-      setAnimating(false)
-    }, 250)
+      setIndex((i) => i + 1)
+      setExiting(false)
+    }, 220)
+  }
+
+  const handleOption = (value) => {
+    advance(qKey, value)
   }
 
   const handleFreetextSubmit = () => {
-    const val = freetext[currentQuestion.id]?.trim()
+    const val = freetext.trim()
     if (!val) return
-    advance(currentQuestion.id, val)
+    advance(qKey, val)
   }
 
-  const handleSkipQuestion = () => {
-    // Use first option as default when skipping
-    const defaultVal = currentQuestion.options[0]?.value || 'unknown'
-    advance(currentQuestion.id, defaultVal)
+  const handleSkipThis = () => {
+    const fallback = q.options?.[0]?.value || 'auto'
+    advance(qKey, fallback)
   }
-
-  if (!currentQuestion) return null
-
-  const selectedValue = answers[currentQuestion.id]
-  const isShowingFreetext = showFreetext[currentQuestion.id]
 
   return (
     <div className="clarification-flow">
-      {/* Assumptions banner */}
-      {assumptions?.length > 0 && currentIndex === 0 && (
+      {/* Inferred assumptions banner — shown only on first question */}
+      {assumptions.length > 0 && index === 0 && (
         <div className="assumptions-banner">
           <div className="assumptions-header">
             <span className="assumptions-icon">✦</span>
@@ -91,100 +85,86 @@ const ClarificationFlow = ({ questions, assumptions, onSubmit, onSkip }) => {
           <div
             key={i}
             className={`progress-dot ${
-              i < currentIndex ? 'done' :
-              i === currentIndex ? 'active' : 'pending'
+              i < index ? 'done' : i === index ? 'active' : 'pending'
             }`}
           />
         ))}
       </div>
 
       {/* Question card */}
-      <div className={`question-card ${animating ? 'slide-out' : 'slide-in'}`}>
+      <div className={`question-card ${exiting ? 'slide-out' : 'slide-in'}`}>
         <div className="question-number">
-          Question {currentIndex + 1} of {questions.length}
+          {index + 1} / {questions.length}
         </div>
 
-        <h2 className="question-text">{currentQuestion.question}</h2>
+        <h2 className="question-text">{q.question}</h2>
 
-        {currentQuestion.hint && (
-          <p className="question-hint">{currentQuestion.hint}</p>
-        )}
+        {q.hint && <p className="question-hint">{q.hint}</p>}
 
-        {/* Option chips */}
-        {!isShowingFreetext && (
-          <div className="options-grid">
-            {currentQuestion.options.map((opt) => (
-              <button
-                key={opt.value}
-                className={`option-chip ${selectedValue === opt.value ? 'selected' : ''}`}
-                onClick={() => selectOption(currentQuestion.id, opt.value)}
-              >
-                {opt.emoji && <span className="option-emoji">{opt.emoji}</span>}
-                <span className="option-label">{opt.label}</span>
-                {selectedValue === opt.value && (
-                  <span className="option-check">✓</span>
-                )}
-              </button>
-            ))}
+        {!showFreetext ? (
+          <>
+            <div className="options-grid">
+              {(q.options || []).map((opt) => {
+                const selected = answers[qKey] === opt.value
+                return (
+                  <button
+                    key={opt.value}
+                    className={`option-chip ${selected ? 'selected' : ''}`}
+                    onClick={() => handleOption(opt.value)}
+                  >
+                    {opt.emoji && <span className="option-emoji">{opt.emoji}</span>}
+                    <span className="option-label">{opt.label}</span>
+                    {selected && <span className="option-check">✓</span>}
+                  </button>
+                )
+              })}
 
-            {currentQuestion.allow_freetext && (
-              <button
-                className="option-chip freetext-trigger"
-                onClick={() => setShowFreetext(prev => ({
-                  ...prev,
-                  [currentQuestion.id]: true,
-                }))}
-              >
-                <span className="option-emoji">✏️</span>
-                <span className="option-label">Custom answer</span>
-              </button>
-            )}
-          </div>
-        )}
+              {q.allow_freetext !== false && (
+                <button
+                  className="option-chip freetext-trigger"
+                  onClick={() => setShowFreetext(true)}
+                >
+                  <span className="option-emoji">✏️</span>
+                  <span className="option-label">Custom answer</span>
+                </button>
+              )}
+            </div>
 
-        {/* Freetext input */}
-        {isShowingFreetext && (
+            <button className="skip-question" onClick={handleSkipThis}>
+              Skip — use best guess
+            </button>
+          </>
+        ) : (
           <div className="freetext-container">
             <input
               ref={inputRef}
               className="freetext-input"
               type="text"
-              placeholder={`Enter your answer...`}
-              value={freetext[currentQuestion.id] || ''}
-              onChange={e => setFreetext(prev => ({
-                ...prev,
-                [currentQuestion.id]: e.target.value,
-              }))}
-              onKeyDown={e => e.key === 'Enter' && handleFreetextSubmit()}
+              placeholder="Type your answer…"
+              value={freetext}
+              onChange={(e) => setFreetext(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleFreetextSubmit()}
             />
             <div className="freetext-actions">
               <button
                 className="freetext-back"
-                onClick={() => setShowFreetext(prev => ({
-                  ...prev,
-                  [currentQuestion.id]: false,
-                }))}
+                onClick={() => { setShowFreetext(false); setFreetext('') }}
               >
                 ← Back to options
               </button>
               <button
                 className="freetext-submit"
                 onClick={handleFreetextSubmit}
-                disabled={!freetext[currentQuestion.id]?.trim()}
+                disabled={!freetext.trim()}
               >
                 Continue →
               </button>
             </div>
           </div>
         )}
-
-        {/* Skip this question */}
-        <button className="skip-question" onClick={handleSkipQuestion}>
-          Skip — use best guess
-        </button>
       </div>
 
-      {/* Bottom skip-all */}
+      {/* Skip all */}
       <button className="skip-all" onClick={() => onSubmit(answers)}>
         Generate with current info
       </button>

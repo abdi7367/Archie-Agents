@@ -1359,3 +1359,32 @@
   text-align: center;
   font-weight: 600;
 }
+
+.results-clarify-section {
+  flex: 1;
+  overflow: auto;
+  padding: 32px 40px 48px;
+  max-width: 720px;
+  margin: 0 auto;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.results-clarify-lead {
+  font-family: var(--heading);
+  font-size: 17px;
+  color: #b4b4c8;
+  margin: 0 0 24px;
+  line-height: 1.5;
+}
+
+.results-clarify-error {
+  margin-top: 24px;
+  font-family: var(--mono);
+  font-size: 14px;
+  color: #ef4444;
+  padding: 16px 20px;
+  border-radius: 12px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.12);
+}
