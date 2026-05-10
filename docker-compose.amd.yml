@@ -70,9 +70,10 @@ services:
       - INFERENCE_MODE=local
       - VLLM_BASE_URL=http://vllm:8000/v1
       - LOCAL_MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct
+      - FRONTEND_URL=http://<AMD_INSTANCE_PUBLIC_IP>:3000
     
     ports:
-      - "8000:8000"
+      - "8002:8001"
 
   # ── React frontend ──────────────────────────────────────────────────
   frontend:
@@ -80,7 +81,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.frontend
       args:
-        - VITE_API_URL=http://<AMD_INSTANCE_PUBLIC_IP>:8000
+        - VITE_API_URL=http://<AMD_INSTANCE_PUBLIC_IP>:8002
     container_name: archie-frontend
     
     depends_on:

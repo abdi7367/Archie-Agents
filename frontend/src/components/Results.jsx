@@ -45,8 +45,15 @@ const Results = () => {
   }, [runData])
 
   useEffect(() => {
+    // If Home already passed the full result, use it directly — no re-fetch
+    if (routerState.runData) {
+      setRunData(routerState.runData)
+      setLoading(false)
+      return
+    }
+  
     const threadId = routerState.threadId || sessionStorage.getItem('thread_id')
-
+  
     if (threadId) {
       fetchRunData(threadId)
     } else if (userInput) {
@@ -55,7 +62,7 @@ const Results = () => {
       setLoading(false)
       setError('No run data found. Please submit a request first.')
     }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   const fetchRunData = async (threadId) => {
     try {

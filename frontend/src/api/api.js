@@ -52,7 +52,7 @@ export const getRun = (threadId) =>
  * @param {number}   intervalMs - polling interval (default 2500ms)
  * @param {number}   timeoutMs  - give up after this many ms (default 120s)
  */
-export const pollRun = (threadId, onUpdate, intervalMs = 2500, timeoutMs = 120_000) => {
+export const pollRun = (threadId, onUpdate, intervalMs = 3000, timeoutMs = 300_000) => {
   return new Promise((resolve, reject) => {
     const start = Date.now()
     let timerId = null
@@ -61,7 +61,7 @@ export const pollRun = (threadId, onUpdate, intervalMs = 2500, timeoutMs = 120_0
       // Timeout guard
       if (Date.now() - start > timeoutMs) {
         clearTimeout(timerId)
-        reject(new Error('Pipeline timed out after 2 minutes. Please try again.'))
+        reject(new Error('Pipeline timed out after 5 minutes. Please try again.'))
         return
       }
 
@@ -82,7 +82,10 @@ export const pollRun = (threadId, onUpdate, intervalMs = 2500, timeoutMs = 120_0
       }
     }
 
+
     // Start polling
     timerId = setTimeout(tick, intervalMs)
   })
 }
+export const submitClarification = (threadId, answers) =>
+  post('/clarify', { thread_id: threadId, answers })

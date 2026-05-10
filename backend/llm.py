@@ -10,7 +10,6 @@ The agents never import Groq or OpenAI directly — only this module.
 """
 
 import os
-from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -65,31 +64,36 @@ def create_chat_completion(client: Any, **kwargs):
     except TypeError:
         return client.chat.completions.create(**kwargs)
 
+# REPLACE WITH this
+_client_cache: dict = {}
 
-@lru_cache(maxsize=1)
 def get_client():
     """
     Returns a client with an OpenAI-compatible interface.
     Both Groq and vLLM expose the same /v1/chat/completions contract.
     """
     mode = get_inference_mode()
+    if mode in _client_cache:
+        return _client_cache[mode]
+
     timeout = get_request_timeout_seconds()
 
     if mode == "local":
-        # vLLM exposes OpenAI-compatible API
         from openai import OpenAI
         base_url = _load_env_var("VLLM_BASE_URL") or "http://localhost:8000/v1"
-        return OpenAI(
+        client = OpenAI(
             base_url=base_url,
-            api_key="not-needed",   # vLLM doesn't require auth by default
+            api_key="not-needed",
             timeout=timeout,
         )
+    else:
+        api_key = _load_env_var("GROQ_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "Missing GROQ_API_KEY. Set it in your environment or backend/.env"
+            )
+        from groq import Client
+        client = Client(api_key=api_key, timeout=timeout)
 
-    # Default: Groq
-    api_key = _load_env_var("GROQ_API_KEY")
-    if not api_key:
-        raise RuntimeError(
-            "Missing GROQ_API_KEY. Set it in your environment or backend/.env"
-        )
-    from groq import Client
-    return Client(api_key=api_key, timeout=timeout)
+    _client_cache[mode] = client
+    return client
